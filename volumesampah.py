@@ -1,97 +1,116 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-import numpy as np
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.metrics import mean_squared_error, r2_score
+from xgboost import XGBRegressor
 
-st.set_page_config(page_title="Prediksi Sampah Kota Sukabumi", layout="wide")
+st.set_page_config(page_title="Prediksi Total Sampah Kota Sukabumi", layout="wide")
 
-st.title("🗑️ Prediksi Volume Sampah Kota Sukabumi")
-st.markdown("Model prediksi menggunakan **Linear Regression** berdasarkan data dari tahun 2017–2023.")
+st.title("♻️ Prediksi Total Sampah Kota Sukabumi")
+st.markdown("Model prediksi menggunakan **Linear Regression**, **Polynomial Regression (degree 2)**, dan **XGBoost** berdasarkan data tahunan.")
 
 # === Load Data ===
 @st.cache_data
 def load_data():
-    df = pd.read_csv('data sampah kota sukabumi.csv', sep=';', skiprows=1)
-    return df
+    df = pd.read_csv("data sampah kota sukabumi.csv", sep=";", skiprows=1)
+    df.columns = df.columns.astype(str)
+    baris_tahunan = df[df['BULAN'].str.upper().str.strip() == 'TAHUNAN']
+    data_tahun = baris_tahunan.drop(columns=['BULAN']).T.reset_index()
+    data_tahun.columns = ['Tahun', 'Total_Sampah']
+    data_tahun['Tahun'] = data_tahun['Tahun'].astype(int)
+    data_tahun['Total_Sampah'] = data_tahun['Total_Sampah'].astype(float)
+    return data_tahun
 
-df = load_data()
+data_tahun = load_data()
 
-# === Validasi Bulan ===
-bulan_valid = [
-    "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",
-    "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"
-]
-df = df[df["BULAN"].isin(bulan_valid)].reset_index(drop=True)
+X = data_tahun[['Tahun']]
+y = data_tahun['Total_Sampah']
 
-# === Konversi nama bulan ke angka ===
-bulan_map = {
-    'JANUARI': 1, 'FEBRUARI': 2, 'MARET': 3, 'APRIL': 4,
-    'MEI': 5, 'JUNI': 6, 'JULI': 7, 'AGUSTUS': 8,
-    'SEPTEMBER': 9, 'OKTOBER': 10, 'NOVEMBER': 11, 'DESEMBER': 12
-}
-df['BULAN'] = df['BULAN'].replace(bulan_map)
+# Buat data tahun prediksi tambahan (extend ke 2027)
+tahun_min = data_tahun['Tahun'].min()
+tahun_max = data_tahun['Tahun'].max()
+tahun_pred_all = pd.DataFrame({'Tahun': list(range(tahun_min, 2028))})
 
-# === Fitur dan Target ===
-x = df['BULAN'].values.reshape(-1, 1)
-tahun_list = ['2017', '2018', '2020', '2021', '2022', '2023']
-y = df[tahun_list].values
+# === Model Linear Regression ===
+linreg = LinearRegression()
+linreg.fit(X, y)
+y_lin_pred = linreg.predict(X)
+y_lin_future = linreg.predict(tahun_pred_all)
 
-# === Model Training ===
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
-model = LinearRegression()
-model.fit(x_train, y_train)
+# === Model Polynomial Regression (degree=2) ===
+poly = PolynomialFeatures(degree=2)
+X_poly = poly.fit_transform(X)
+tahun_pred_poly = poly.transform(tahun_pred_all)
 
-# === Input Pengguna ===
-st.subheader("🔮 Prediksi Volume Sampah Bulanan")
-col1, col2 = st.columns(2)
-with col1:
-    bulan_input = st.selectbox("Pilih Bulan", list(bulan_map.keys()))
-with col2:
-    tahun_prediksi_input = st.number_input("Masukkan Tahun Prediksi", min_value=2024, max_value=2100, step=1, value=2024)
+poly_model = LinearRegression()
+poly_model.fit(X_poly, y)
+y_poly_pred = poly_model.predict(X_poly)
+y_poly_future = poly_model.predict(tahun_pred_poly)
 
-bulan_numerik = bulan_map[bulan_input]
-prediksi = model.predict([[bulan_numerik]])
+# === Model XGBoost Regressor ===
+xgb_model = XGBRegressor(objective='reg:squarederror', n_estimators=100)
+xgb_model.fit(X, y)
+y_xgb_pred = xgb_model.predict(X)
+y_xgb_future = xgb_model.predict(tahun_pred_all)
 
-# Tampilkan hasil prediksi
-st.markdown("### Hasil Prediksi:")
-prediksi_dict = {}
-for i, thn in enumerate(tahun_list):
-    st.write(f"📅 Bulan **{bulan_input}** Tahun **{thn}** → **{prediksi[0][i]:.2f} ton**")
-    prediksi_dict[thn] = prediksi[0][i]
+# Fungsi evaluasi model
+def evaluate_model(name, y_true, y_pred):
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    return mse, r2
 
-# Tambahkan hasil prediksi tahun input
-prediksi_dict[str(tahun_prediksi_input)] = np.mean(prediksi[0])
+mse_lin, r2_lin = evaluate_model("Linear Regression", y, y_lin_pred)
+mse_poly, r2_poly = evaluate_model("Polynomial Regression", y, y_poly_pred)
+mse_xgb, r2_xgb = evaluate_model("XGBoost Regressor", y, y_xgb_pred)
 
-st.write(f"📅 Bulan **{bulan_input}** Tahun **{tahun_prediksi_input}** (prediksi) → **{prediksi_dict[str(tahun_prediksi_input)]:.2f} ton**")
+# Tampilkan skor akurasi
+st.subheader("📊 Evaluasi Model pada Data Historis")
+st.write(f"Linear Regression — MSE: {mse_lin:.2f}, R²: {r2_lin:.4f}")
+st.write(f"Polynomial Regression — MSE: {mse_poly:.2f}, R²: {r2_poly:.4f}")
+st.write(f"XGBoost Regressor — MSE: {mse_xgb:.2f}, R²: {r2_xgb:.4f}")
 
-# === Skor Model ===
-st.subheader("📊 Skor Akurasi Model")
-skor = model.score(x_test, y_test)
-st.write(f"Skor R²: **{skor:.4f}**")
+# Input tahun untuk prediksi
+st.subheader("🔮 Prediksi Total Sampah per Tahun")
+tahun_input = st.number_input(
+    "Masukkan Tahun untuk Prediksi", 
+    min_value=tahun_min, max_value=2030, value=tahun_max + 1, step=1)
 
-# === Visualisasi ===
-st.subheader("📈 Volume Sampah + Prediksi (Tahun Prediksi)")
-bulan_label = df['BULAN'].replace({v: k for k, v in bulan_map.items()})
-x_bar = np.arange(len(bulan_label))
-bar_width = 0.12
+tahun_input_df = pd.DataFrame({'Tahun': [tahun_input]})
+tahun_input_poly = poly.transform(tahun_input_df)
 
-fig, ax = plt.subplots(figsize=(14, 6))
-for i, thn in enumerate(tahun_list):
-    posisi = x_bar + i * bar_width
-    ax.bar(posisi, df[thn], width=bar_width, label=thn)
+pred_lin = linreg.predict(tahun_input_df)[0]
+pred_poly = poly_model.predict(tahun_input_poly)[0]
+pred_xgb = xgb_model.predict(tahun_input_df)[0]
 
-# Prediksi tahun input
-posisi_pred = x_bar + len(tahun_list) * bar_width
-prediksi_repeat = [prediksi_dict[str(tahun_prediksi_input)]] * len(x_bar)
-ax.bar(posisi_pred, prediksi_repeat, width=bar_width, label=f'{tahun_prediksi_input} (Prediksi)', color='red', alpha=0.6)
+st.markdown(f"### Hasil Prediksi Tahun {tahun_input}:")
+st.write(f"- Linear Regression: **{pred_lin:.2f} ton**")
+st.write(f"- Polynomial Regression (degree 2): **{pred_poly:.2f} ton**")
+st.write(f"- XGBoost Regressor: **{pred_xgb:.2f} ton**")
 
-ax.set_xlabel("Bulan")
-ax.set_ylabel("Volume Sampah (ton)")
-ax.set_title(f"Volume Sampah Kota Sukabumi per Bulan + Prediksi Tahun {tahun_prediksi_input}")
-ax.set_xticks(x_bar + bar_width * (len(tahun_list) / 2))
-ax.set_xticklabels(bulan_label, rotation=45)
+# Visualisasi
+st.subheader("📈 Grafik Perbandingan Model")
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Plot data asli
+ax.scatter(X, y, color='black', label='Data Asli')
+
+# Plot prediksi model historis
+ax.plot(tahun_pred_all, y_lin_future, linestyle='--', color='red', label='Linear Regression')
+ax.plot(tahun_pred_all, y_poly_future, linestyle='--', color='green', label='Polynomial Regression')
+ax.plot(tahun_pred_all, y_xgb_future, linestyle='--', color='blue', label='XGBoost Regressor')
+
+# Highlight prediksi tahun input user
+ax.scatter([tahun_input]*3, [pred_lin, pred_poly, pred_xgb], color=['red','green','blue'], s=100, zorder=5)
+for pred, color, name in zip([pred_lin, pred_poly, pred_xgb], ['red','green','blue'], ['Linear','Polynomial','XGBoost']):
+    ax.annotate(f"{pred:.1f}", (tahun_input, pred), textcoords="offset points", xytext=(0,10), ha='center', color=color)
+
+ax.set_xlabel('Tahun')
+ax.set_ylabel('Total Sampah (ton)')
+ax.set_title('Prediksi Total Sampah Kota Sukabumi per Tahun')
+ax.grid(True)
 ax.legend()
-
 st.pyplot(fig)
