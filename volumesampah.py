@@ -45,7 +45,12 @@ model.fit(x_train, y_train)
 
 # === Input Pengguna ===
 st.subheader("🔮 Prediksi Volume Sampah Bulanan")
-bulan_input = st.selectbox("Pilih Bulan", list(bulan_map.keys()))
+col1, col2 = st.columns(2)
+with col1:
+    bulan_input = st.selectbox("Pilih Bulan", list(bulan_map.keys()))
+with col2:
+    tahun_prediksi_input = st.number_input("Masukkan Tahun Prediksi", min_value=2024, max_value=2100, step=1, value=2024)
+
 bulan_numerik = bulan_map[bulan_input]
 prediksi = model.predict([[bulan_numerik]])
 
@@ -55,7 +60,11 @@ prediksi_dict = {}
 for i, thn in enumerate(tahun_list):
     st.write(f"📅 Bulan **{bulan_input}** Tahun **{thn}** → **{prediksi[0][i]:.2f} ton**")
     prediksi_dict[thn] = prediksi[0][i]
-prediksi_dict['2024'] = np.mean(prediksi[0])  # Simpan prediksi agregat untuk 2024
+
+# Tambahkan hasil prediksi tahun input
+prediksi_dict[str(tahun_prediksi_input)] = np.mean(prediksi[0])
+
+st.write(f"📅 Bulan **{bulan_input}** Tahun **{tahun_prediksi_input}** (prediksi) → **{prediksi_dict[str(tahun_prediksi_input)]:.2f} ton**")
 
 # === Skor Model ===
 st.subheader("📊 Skor Akurasi Model")
@@ -63,7 +72,7 @@ skor = model.score(x_test, y_test)
 st.write(f"Skor R²: **{skor:.4f}**")
 
 # === Visualisasi ===
-st.subheader("📈 Volume Sampah + Prediksi (Tahun 2024)")
+st.subheader("📈 Volume Sampah + Prediksi (Tahun Prediksi)")
 bulan_label = df['BULAN'].replace({v: k for k, v in bulan_map.items()})
 x_bar = np.arange(len(bulan_label))
 bar_width = 0.12
@@ -73,14 +82,14 @@ for i, thn in enumerate(tahun_list):
     posisi = x_bar + i * bar_width
     ax.bar(posisi, df[thn], width=bar_width, label=thn)
 
-# Prediksi 2024
-posisi_2024 = x_bar + len(tahun_list) * bar_width
-prediksi_repeat = [prediksi_dict['2024']] * len(x_bar)
-ax.bar(posisi_2024, prediksi_repeat, width=bar_width, label='2024 (Prediksi)', color='red', alpha=0.6)
+# Prediksi tahun input
+posisi_pred = x_bar + len(tahun_list) * bar_width
+prediksi_repeat = [prediksi_dict[str(tahun_prediksi_input)]] * len(x_bar)
+ax.bar(posisi_pred, prediksi_repeat, width=bar_width, label=f'{tahun_prediksi_input} (Prediksi)', color='red', alpha=0.6)
 
 ax.set_xlabel("Bulan")
 ax.set_ylabel("Volume Sampah (ton)")
-ax.set_title("Volume Sampah Kota Sukabumi per Bulan + Prediksi Tahun 2024")
+ax.set_title(f"Volume Sampah Kota Sukabumi per Bulan + Prediksi Tahun {tahun_prediksi_input}")
 ax.set_xticks(x_bar + bar_width * (len(tahun_list) / 2))
 ax.set_xticklabels(bulan_label, rotation=45)
 ax.legend()
