@@ -103,9 +103,13 @@ ax.plot(tahun_pred_all, y_lin_future, linestyle='--', color='red', label='Linear
 ax.plot(tahun_pred_all, y_poly_future, linestyle='--', color='green', label='Polynomial Regression')
 ax.plot(tahun_pred_all, y_xgb_future, linestyle='--', color='blue', label='XGBoost Regressor')
 
-# Highlight prediksi tahun input user
-ax.scatter([tahun_input]*3, [pred_lin, pred_poly, pred_xgb], color=['red','green','blue'], s=100, zorder=5)
-for pred, color, name in zip([pred_lin, pred_poly, pred_xgb], ['red','green','blue'], ['Linear','Polynomial','XGBoost']):
+# Highlight prediksi tahun input user dengan warna berbeda
+colors = ['red', 'green', 'blue']
+preds = [pred_lin, pred_poly, pred_xgb]
+names = ['Linear', 'Polynomial', 'XGBoost']
+
+for pred, color, name in zip(preds, colors, names):
+    ax.scatter(tahun_input, pred, color=color, s=100, zorder=5)
     ax.annotate(f"{pred:.1f}", (tahun_input, pred), textcoords="offset points", xytext=(0,10), ha='center', color=color)
 
 ax.set_xlabel('Tahun')
